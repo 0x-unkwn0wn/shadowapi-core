@@ -1594,14 +1594,14 @@ async def recon_env(request: Request):
             "DB_NAME=platform",
             "DB_USER=platform_svc",
             "DB_PASSWORD=SuperSecret123!",
-            "JWT_ISSUER=https://platform-api.duckdns.org",
+            "JWT_ISSUER=https://example.com",
             "JWT_AUDIENCE=platform-api",
             "JWT_SECRET=dev_only_change_me",
             "REDIS_URL=redis://10.12.0.9:6379/0",
             "S3_BUCKET=platform-assets",
             "S3_REGION=eu-west-1",
-            "PUBLIC_BASE_URL=https://platform-api.duckdns.org",
-            "SUPPORT_EMAIL=support@platform-api.duckdns.org",
+            "PUBLIC_BASE_URL=https://example.com",
+            "SUPPORT_EMAIL=support@example.com",
         ]
     )
     return PlainTextResponse(payload)
@@ -1622,12 +1622,12 @@ async def recon_config(request: Request):
             "service": "platform-api",
             "region": "eu-west-1",
             "auth": {
-                "issuer": "https://platform-api.duckdns.org",
+                "issuer": "https://example.com",
                 "jwks": "/.well-known/jwks.json",
                 "audience": "platform-api",
             },
             "features": {"beta_access": True, "sandbox_mode": False, "webhooks": True},
-            "contact": {"support": "support@platform-api.duckdns.org"},
+            "contact": {"support": "support@example.com"},
         }
     )
 
@@ -1644,10 +1644,10 @@ async def recon_security(request: Request):
     )
     payload = "\n".join(
         [
-            "Contact: security@platform-api.duckdns.org",
-            "Encryption: https://platform-api.duckdns.org/pgp.txt",
+            "Contact: security@example.com",
+            "Encryption: https://example.com/pgp.txt",
             "Preferred-Languages: en, es",
-            "Policy: https://platform-api.duckdns.org/security",
+            "Policy: https://example.com/security",
         ]
     )
     return PlainTextResponse(payload)
