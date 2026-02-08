@@ -1,8 +1,8 @@
-"""Initial database schema for Honey App."""
+"""Core database schema for ShadowAPI Core."""
 
 from alembic import op
 
-revision = "20240203_01_initial_schema"
+revision = "20260208_01_core_schema"
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -61,37 +61,6 @@ SCHEMA_STATEMENTS = [
     )
     """,
     """
-    CREATE TABLE IF NOT EXISTS cases (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      title TEXT NOT NULL,
-      description TEXT,
-      severity TEXT,
-      tags TEXT,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'open'
-    )
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS case_actors (
-      case_id INTEGER NOT NULL,
-      actor_id TEXT NOT NULL,
-      added_at TEXT NOT NULL,
-      role TEXT,
-      PRIMARY KEY(case_id, actor_id)
-    )
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS case_evidence (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      case_id INTEGER NOT NULL,
-      ref_type TEXT NOT NULL,
-      ref_id TEXT NOT NULL,
-      note TEXT,
-      added_at TEXT NOT NULL
-    )
-    """,
-    """
     CREATE TABLE IF NOT EXISTS sessions (
       session_id TEXT PRIMARY KEY,
       actor_id TEXT NOT NULL,
@@ -120,31 +89,32 @@ SCHEMA_STATEMENTS = [
     )
     """,
     """
-    CREATE TABLE IF NOT EXISTS campaigns (
-      campaign_id TEXT PRIMARY KEY,
-      label TEXT,
-      created_at TEXT NOT NULL,
-      last_seen_at TEXT,
-      score_avg REAL,
-      features_summary_json TEXT,
-      representative_session_id TEXT
-    )
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS campaign_actor_links (
-      campaign_id TEXT NOT NULL,
-      actor_id TEXT NOT NULL,
-      confidence REAL,
-      reasons_json TEXT,
-      linked_at TEXT NOT NULL,
-      PRIMARY KEY(campaign_id, actor_id)
-    )
-    """,
-    """
     CREATE TABLE IF NOT EXISTS actor_fingerprints (
       actor_id TEXT PRIMARY KEY,
       fp_json TEXT,
       updated_at TEXT
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS honeypot_checks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ts TEXT NOT NULL,
+      ok INTEGER NOT NULL,
+      status_code INTEGER,
+      latency_ms INTEGER,
+      error TEXT,
+      endpoint TEXT NOT NULL DEFAULT '/health'
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS honeypot_jobs (
+      job_id TEXT PRIMARY KEY,
+      created_ts TEXT NOT NULL,
+      updated_ts TEXT,
+      actor_id TEXT,
+      kind TEXT,
+      status TEXT,
+      payload_json TEXT
     )
     """,
 ]
@@ -160,51 +130,28 @@ INDEX_STATEMENTS = [
     "CREATE INDEX IF NOT EXISTS idx_actors_last_seen ON actors(last_seen)",
     "CREATE INDEX IF NOT EXISTS idx_sessions_actor_id ON sessions(actor_id)",
     "CREATE INDEX IF NOT EXISTS idx_session_steps_session_id ON session_steps(session_id)",
-    "CREATE INDEX IF NOT EXISTS idx_cases_status ON cases(status)",
-]
-
-TRIGGER_STATEMENTS = [
-    """
-    CREATE TRIGGER IF NOT EXISTS trg_public_protect_session_case BEFORE DELETE ON sessions
-    BEGIN
-        SELECT CASE
-            WHEN EXISTS (SELECT 1 FROM case_evidence WHERE ref_type='session' AND ref_id=OLD.session_id)
-            THEN RAISE(ABORT, 'session linked to case evidence')
-        END;
-    END;
-    """,
-    """
-    CREATE TRIGGER IF NOT EXISTS trg_public_protect_step_case BEFORE DELETE ON session_steps
-    BEGIN
-        SELECT CASE
-            WHEN EXISTS (SELECT 1 FROM case_evidence WHERE ref_type='step' AND ref_id=CAST(OLD.id AS TEXT))
-            THEN RAISE(ABORT, 'step linked to case evidence')
-        END;
-    END;
-    """,
+    "CREATE INDEX IF NOT EXISTS idx_honeypot_checks_ts ON honeypot_checks(ts)",
+    "CREATE INDEX IF NOT EXISTS idx_honeypot_checks_ok_ts ON honeypot_checks(ok, ts)",
+    "CREATE INDEX IF NOT EXISTS idx_honeypot_checks_endpoint_ts ON honeypot_checks(endpoint, ts)",
+    "CREATE INDEX IF NOT EXISTS idx_hp_jobs_created ON honeypot_jobs(created_ts)",
 ]
 
 
 def upgrade() -> None:
-    for statement in SCHEMA_STATEMENTS + INDEX_STATEMENTS + TRIGGER_STATEMENTS:
+    for statement in SCHEMA_STATEMENTS + INDEX_STATEMENTS:
         op.execute(statement)
 
 
 def downgrade() -> None:
     for statement in (
-        "DROP TRIGGER IF EXISTS trg_public_protect_step_case",
-        "DROP TRIGGER IF EXISTS trg_public_protect_session_case",
-        "DROP TABLE IF EXISTS campaign_actor_links",
-        "DROP TABLE IF EXISTS campaigns",
+        "DROP TABLE IF EXISTS honeypot_jobs",
+        "DROP TABLE IF EXISTS honeypot_checks",
         "DROP TABLE IF EXISTS session_steps",
         "DROP TABLE IF EXISTS sessions",
-        "DROP TABLE IF EXISTS case_evidence",
-        "DROP TABLE IF EXISTS case_actors",
-        "DROP TABLE IF EXISTS cases",
         "DROP TABLE IF EXISTS issued_secrets",
         "DROP TABLE IF EXISTS tokens",
         "DROP TABLE IF EXISTS events",
         "DROP TABLE IF EXISTS actor_fingerprints",
-        "DROP TABLE IF EXISTS actors"
+        "DROP TABLE IF EXISTS actors",
     ):
         op.execute(statement)

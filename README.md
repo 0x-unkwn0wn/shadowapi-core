@@ -34,6 +34,7 @@ Open:
 Notes:
 - The dev stack runs a one-shot migrator before starting services.
 - SQLite is stored in the `hp_dev_data` volume.
+- The database file (`/data/honeypot.db`) is created automatically on first migration/startup.
 
 ## Production
 See `documentation/ops/vps/RUNBOOK.md` for a step-by-step VPS deployment with Traefik + ACME and GHCR.

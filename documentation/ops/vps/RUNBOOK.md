@@ -46,7 +46,7 @@ This runbook covers:
 2. Clone repo:
    - `git clone <REPO_URL> /opt/shadowapi-core`
 3. Create `.env.prod` (not baked into the image):
-   - `cp /opt/shadowapi-core/.env.prod /opt/shadowapi-core/.env.prod`
+   - `cp /opt/shadowapi-core/.env.prod.example /opt/shadowapi-core/.env.prod`
    - Fill real values (tokens, URLs, passwords).
    - Add:
      - `HP_IMAGE=ghcr.io/<ORG>/shadowapi-core`
@@ -73,7 +73,8 @@ Traefik handles certificates automatically via ACME HTTP-01.
    - `curl -i https://<SUBDOMAIN>.duckdns.org/health`
    - `curl -i https://<SUBDOMAIN>.duckdns.org/docs`
    - Admin panel is available via SSH tunnel on `127.0.0.1:9001`
-4. If you see `attempt to write a readonly database`, fix volume ownership once:
+4. The SQLite database (`/data/honeypot.db`) is created automatically on the first migration/startup.
+5. If you see `attempt to write a readonly database`, fix volume ownership once:
    - `docker compose -f compose/docker-compose.prod.yml --env-file .env.prod run --rm --user 0:0 app sh -c "chown -R 10001:0 /data"`
    - then re-run `bash /opt/shadowapi-core/ops/vps/deploy.sh`
 
@@ -89,9 +90,9 @@ MaxMind GeoLite2 is not committed to git. Download it on the server:
 
 ## Phase 5.2: Data Retention (TTL)
 1. Copy retention cron:
-   - `cp /opt/shadowapi-core/ops/cron/yourapp-retention /etc/cron.d/yourapp-retention`
+   - `cp /opt/shadowapi-core/ops/cron/shadowapi-core-retention /etc/cron.d/shadowapi-core-retention`
    - The cron enables retention by default (`HP_RETENTION_ENABLE=1`), runs daily at 03:15 UTC.
-2. Optional env overrides in `/etc/cron.d/yourapp-retention` or `/etc/environment`:
+2. Optional env overrides in `/etc/cron.d/shadowapi-core-retention` or `/etc/environment`:
    - `HP_RETENTION_ENABLE=0` (disable retention)
    - `HP_RETENTION_EVENTS_DAYS=30`
    - `HP_RETENTION_SESSIONS_DAYS=30`

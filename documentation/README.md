@@ -8,7 +8,7 @@ This repo packages both the public ShadowAPI honeypot API (`app/honeypot_public.
 - `compose/docker-compose.dev.yml`  local developer stack with reload + automatic migrations.
 - `compose/docker-compose.prod.yml`  production stack (migrate, app, admin, traefik reverse proxy).
 - `migrations/`, `alembic.ini`  database migrations executed via Alembic.
-- `backup_sqlite.sh` + `ops/cron/yourapp-backup`  host-side backup automation (14-day retention).
+- `backup_sqlite.sh` + `ops/cron/shadowapi-core-backup` host-side backup automation (14-day retention).
 - `.env.dev` / `.env.prod.example`  environment defaults (set both `HP_DB_PATH` and `DATABASE_URL`).
 - `Makefile`  common Docker/Alembic targets.
 
@@ -33,7 +33,7 @@ The dev stack mount-binds the repo into `/app`, exposes 8000/9001, reuses the `h
 ## Backups
 
 - `backup_sqlite.sh` runs on the host (no container shell required). It uses a disposable `alpine:3` container to execute `sqlite3 .backup`, writes the snapshot to `./backups`, and prunes files older than `KEEP_DAYS` (default 14).
-- Copy `ops/cron/yourapp-backup` to `/etc/cron.d/yourapp-backup`, adjust the paths (e.g., `BACKUP_DIR=/var/backups/honey-app` and script path `/opt/shadowapi-core/backup_sqlite.sh`), and cron will invoke the backup daily at 02:15 UTC.
+- Copy `ops/cron/shadowapi-core-backup` to `/etc/cron.d/shadowapi-core-backup`, adjust the paths (e.g., `BACKUP_DIR=/var/backups/shadowapi-core` and script path `/opt/shadowapi-core/backup_sqlite.sh`), and cron will invoke the backup daily at 02:15 UTC.
  - Set `VERIFY_INTEGRITY=1` to run `PRAGMA integrity_check` on each backup file.
 
 Both script and cron file accept overrides via `DATA_VOLUME`, `BACKUP_DIR`, `APP_DB_PATH`, and `KEEP_DAYS`.

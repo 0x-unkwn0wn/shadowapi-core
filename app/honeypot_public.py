@@ -855,90 +855,13 @@ def _ensure_playground_tables(conn: sqlite3.Connection) -> None:
         )
         """
     )
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS honeypot_files (
-          file_id TEXT PRIMARY KEY,
-          created_ts TEXT NOT NULL,
-          actor_id TEXT,
-          source_endpoint TEXT,
-          filename TEXT,
-          size INTEGER,
-          md5 TEXT,
-          sha1 TEXT,
-          sha256 TEXT,
-          mime TEXT,
-          meta_json TEXT
-        )
-        """
-    )
     conn.execute("CREATE INDEX IF NOT EXISTS idx_hp_jobs_created ON honeypot_jobs(created_ts)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_hp_files_sha256 ON honeypot_files(sha256)")
     conn.commit()
 
 
 def _ensure_sample_assets(conn: sqlite3.Connection) -> None:
     _ensure_playground_tables(conn)
     now = _utc_now_iso()
-    # sample file
-    row = conn.execute(
-        "SELECT file_id, sha256, meta_json, filename, size FROM honeypot_files WHERE file_id=?",
-        (SAMPLE_FILE_ID,),
-    ).fetchone()
-    size = len(SAMPLE_FILE_BYTES)
-    md5 = hashlib.md5(SAMPLE_FILE_BYTES).hexdigest()
-    sha1 = hashlib.sha1(SAMPLE_FILE_BYTES).hexdigest()
-    sha256 = SAMPLE_FILE_SHA256
-    mime = _guess_mime(SAMPLE_FILE_NAME)
-    analysis = _build_file_analysis(SAMPLE_FILE_NAME, SAMPLE_FILE_BYTES)
-    meta = {"original_name": SAMPLE_FILE_NAME, "analysis": analysis}
-    if not row:
-        conn.execute(
-            """
-            INSERT INTO honeypot_files(file_id, created_ts, actor_id, source_endpoint, filename, size, md5, sha1, sha256, mime, meta_json)
-            VALUES(?,?,?,?,?,?,?,?,?,?,?)
-            """,
-            (
-                SAMPLE_FILE_ID,
-                now,
-                "system",
-                "seed",
-                SAMPLE_FILE_NAME,
-                int(size),
-                md5,
-                sha1,
-                sha256,
-                mime,
-                json.dumps(meta, ensure_ascii=False),
-            ),
-        )
-    else:
-        meta_json = row["meta_json"] or ""
-        needs_update = (
-            row["sha256"] != sha256
-            or row["filename"] != SAMPLE_FILE_NAME
-            or int(row["size"] or 0) != int(size)
-            or "honey" in str(meta_json).lower()
-            or "honeypot" in str(meta_json).lower()
-        )
-        if needs_update:
-            conn.execute(
-                """
-                UPDATE honeypot_files
-                SET filename=?, size=?, md5=?, sha1=?, sha256=?, mime=?, meta_json=?
-                WHERE file_id=?
-                """,
-                (
-                    SAMPLE_FILE_NAME,
-                    int(size),
-                    md5,
-                    sha1,
-                    sha256,
-                    mime,
-                    json.dumps(meta, ensure_ascii=False),
-                    SAMPLE_FILE_ID,
-                ),
-            )
 
     # sample job
     row = conn.execute(
@@ -1008,126 +931,6 @@ def _job_snapshot(conn: sqlite3.Connection, job_id: str) -> Optional[Dict[str, A
         "kind": row["kind"],
         "payload": payload,
     }
-
-
-def _guess_mime(filename: str) -> str:
-    name = (filename or "").lower()
-    if name.endswith(".zip"):
-        return "application/zip"
-    if name.endswith(".pdf"):
-        return "application/pdf"
-    if name.endswith(".csv"):
-        return "text/csv"
-    if name.endswith(".json"):
-        return "application/json"
-    if name.endswith(".jpg") or name.endswith(".jpeg"):
-        return "image/jpeg"
-    if name.endswith(".png"):
-        return "image/png"
-    return "application/octet-stream"
-
-
-def _build_file_analysis(filename: str, raw: bytes) -> Dict[str, Any]:
-    sample = raw[:4096].decode("utf-8", errors="ignore")
-    tokens = [t for t in re.split(r"[^A-Za-z0-9_./:-]+", sample) if len(t) > 3]
-    uniq = []
-    for t in tokens:
-        if t not in uniq:
-            uniq.append(t)
-        if len(uniq) >= 10:
-            break
-
-    ioc_regex = {
-        "ipv4": r"\b\d{1,3}(?:\.\d{1,3}){3}\b",
-        "email": r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}",
-        "aws_key": r"AKIA[0-9A-Z]{16}",
-        "jwt": r"eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+",
-    }
-    ioc_counts = {}
-    for key, pattern in ioc_regex.items():
-        ioc_counts[key] = len(re.findall(pattern, sample, flags=re.IGNORECASE))
-
-    analysis = {
-        "file_type": _guess_mime(filename),
-        "strings_sample": uniq,
-        "ioc_counts": ioc_counts,
-    }
-
-    if (filename or "").lower().endswith(".zip"):
-        analysis["zip_entries"] = [
-            "bin/agent",
-            "config/values.yaml",
-            "secrets/.env",
-        ]
-
-    return analysis
-
-
-def _store_file(
-    conn: sqlite3.Connection,
-    *,
-    actor_id: str,
-    filename: str,
-    raw: bytes,
-    source: str,
-) -> Dict[str, Any]:
-    _ensure_playground_tables(conn)
-    file_id = f"file_{secrets.token_hex(8)}"
-    size = len(raw)
-    md5 = hashlib.md5(raw).hexdigest() if raw else ""
-    sha1 = hashlib.sha1(raw).hexdigest() if raw else ""
-    sha256 = hashlib.sha256(raw).hexdigest() if raw else ""
-    mime = _guess_mime(filename)
-    analysis = _build_file_analysis(filename, raw)
-    meta = {
-        "original_name": filename,
-        "analysis": analysis,
-    }
-    conn.execute(
-        """
-        INSERT INTO honeypot_files(file_id, created_ts, actor_id, source_endpoint, filename, size, md5, sha1, sha256, mime, meta_json)
-        VALUES(?,?,?,?,?,?,?,?,?,?,?)
-        """,
-        (
-            file_id,
-            _utc_now_iso(),
-            actor_id,
-            source,
-            filename,
-            int(size),
-            md5,
-            sha1,
-            sha256,
-            mime,
-            json.dumps(meta, ensure_ascii=False),
-        ),
-    )
-    conn.commit()
-    return {
-        "file_id": file_id,
-        "filename": filename,
-        "size": size,
-        "md5": md5,
-        "sha1": sha1,
-        "sha256": sha256,
-        "mime": mime,
-        "analysis": analysis,
-    }
-
-
-async def _extract_upload(request: Request) -> Tuple[str, bytes]:
-    ct = (request.headers.get("content-type") or "").lower()
-    if "multipart/form-data" in ct:
-        form = await request.form()
-        for value in form.values():
-            if hasattr(value, "filename"):
-                filename = value.filename or "upload.bin"
-                data = await value.read()
-                return filename, data
-        return "upload.bin", b""
-    raw = await request.body()
-    filename = request.query_params.get("filename") or "upload.bin"
-    return filename, raw
 
 
 async def _read_json_or_form(request: Request) -> Dict[str, Any]:
@@ -1321,7 +1124,7 @@ async def status(request: Request):
     actor = _actor_id_from_request(request)
     payload = {
         "status": "ok",
-        "service": "platform-api",
+        "service": "shadowapi",
         "instance": actor[:12],
         "version": APP_VERSION,
     }
@@ -1595,7 +1398,7 @@ async def recon_env(request: Request):
             "DB_USER=platform_svc",
             "DB_PASSWORD=SuperSecret123!",
             "JWT_ISSUER=https://example.com",
-            "JWT_AUDIENCE=platform-api",
+            "JWT_AUDIENCE=shadowapi",
             "JWT_SECRET=dev_only_change_me",
             "REDIS_URL=redis://10.12.0.9:6379/0",
             "S3_BUCKET=platform-assets",
@@ -1619,12 +1422,12 @@ async def recon_config(request: Request):
     )
     return JSONResponse(
         {
-            "service": "platform-api",
+            "service": "shadowapi",
             "region": "eu-west-1",
             "auth": {
                 "issuer": "https://example.com",
                 "jwks": "/.well-known/jwks.json",
-                "audience": "platform-api",
+                "audience": "shadowapi",
             },
             "features": {"beta_access": True, "sandbox_mode": False, "webhooks": True},
             "contact": {"support": "support@example.com"},
@@ -2322,27 +2125,6 @@ async def console_exec(request: Request):
     elif cmd.strip() == "id":
         output = "uid=1001(app) gid=1001(app) groups=1001(app)"
     return JSONResponse({"ok": True, "output": output})
-
-
-@app.post("/console/upload", tags=["Console"], response_class=JSONResponse)
-async def console_upload(request: Request):
-    await _sleep_jitter()
-    filename, raw = await _extract_upload(request)
-    conn = _db()
-    try:
-        _ensure_schema(conn)
-        actor_id = _actor_id_from_request(request)
-        file_info = _store_file(conn, actor_id=actor_id, filename=filename, raw=raw, source="/console/upload")
-        _set_hp_event(
-            request,
-            kind="console_upload",
-            points=10,
-            trap_flags=["console", "files"],
-            extra={"file_id": file_info["file_id"], "sha256": file_info["sha256"]},
-        )
-    finally:
-        conn.close()
-    return JSONResponse({"status": "stored", "file_id": file_info["file_id"]})
 
 
 @app.get("/console/history", tags=["Console"], response_class=JSONResponse)

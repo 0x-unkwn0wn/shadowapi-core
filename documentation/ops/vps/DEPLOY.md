@@ -88,8 +88,8 @@ sudo systemctl status shadowapi-core.service
 
 ## 7. Backups
 
-Configure the cron from `ops/cron/yourapp-backup` and point it to:
+Configure the cron from `ops/cron/shadowapi-core-backup` and point it to:
 
-- `BACKUP_DIR=/var/backups/honey-app`
+- `BACKUP_DIR=/var/backups/shadowapi-core`
 - `DATA_VOLUME=hp_prod_data`
 - `APP_DB_PATH=/data/honeypot.db`
