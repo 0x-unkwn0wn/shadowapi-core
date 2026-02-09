@@ -1,0 +1,257 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Dashboard</h1>
+    <div class="sub">Operational overview of threat activity</div>
+  </div>
+</div>
+
+<section class="kpi-grid">
+  <div class="kpi-card">
+    <div class="kpi-label">Active actors (24h)</div>
+    <div class="kpi-value">{{ kpi.active_24h }}</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Active actors (7d)</div>
+    <div class="kpi-value">{{ kpi.active_7d }}</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Total events</div>
+    <div class="kpi-value">{{ kpi.events_total }}</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Open cases</div>
+    <div class="kpi-value">{{ kpi.cases_open }}</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Active campaigns</div>
+    <div class="kpi-value">{{ kpi.campaigns_active }}</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Max stage reached</div>
+    <div class="kpi-value">S{{ kpi.stage_max }}</div>
+  </div>
+</section>
+
+<section class="section-grid">
+  <div class="card panel-wide">
+    <div class="card-head"><div class="card-title">Trends</div></div>
+    <div class="card-body">
+      <div class="chart-block">
+        <div class="chart-title">Events per day (14d)</div>
+        <div class="chart-frame">
+          <canvas id="chart-events" class="chart-canvas"></canvas>
+        </div>
+      </div>
+      <div class="chart-block">
+        <div class="chart-title">New vs recurrent actors</div>
+        <div class="chart-frame">
+          <canvas id="chart-actors" class="chart-canvas"></canvas>
+        </div>
+      </div>
+      <div class="chart-block">
+        <div class="chart-title">Stage progression</div>
+        <div class="chart-frame">
+          <canvas id="chart-stages" class="chart-canvas"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card panel-narrow">
+    <div class="card-head"><div class="card-title">Recent Activity</div></div>
+    <div class="card-body">
+      <div class="activity-block">
+        <div class="activity-title">Latest cases</div>
+        {% if cases_recent %}
+          <ul class="activity-list">
+            {% for c in cases_recent %}
+              <li>
+                <a class="link" href="/dashboard/cases/{{ c.id }}">#{{ c.id }}</a>
+                <span class="badge status-{{ c.status }}">{{ c.status }}</span>
+                <span class="muted" data-rel="{{ c.created_at }}">{{ c.created_at }}</span>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <div class="muted">No cases yet.</div>
+        {% endif %}
+      </div>
+      <div class="activity-block">
+        <div class="activity-title">Reactivated campaigns (24h)</div>
+        {% if campaigns_reactivated %}
+          <ul class="activity-list">
+            {% for c in campaigns_reactivated %}
+              <li>
+                <a class="link" href="/dashboard/campaigns/{{ c.campaign_id }}">{{ c.campaign_id[:8] }}</a>
+                <span class="badge badge-accent">reactivated</span>
+                <span class="muted" data-rel="{{ c.last_seen_at }}">{{ c.last_seen_at }}</span>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <div class="muted">No reactivations detected.</div>
+        {% endif %}
+      </div>
+      <div class="activity-block">
+        <div class="activity-title">Fast escalations</div>
+        {% if fast_escalations %}
+          <ol class="activity-list ranked">
+            {% for a in fast_escalations %}
+              <li>
+                <a class="link" href="/actor/{{ a.actor_id }}">{{ a.actor_id[:8] }}</a>
+                <span class="badge">S{{ a.stage_max }}</span>
+                <span class="muted">{{ a.duration_s }}s</span>
+              </li>
+            {% endfor %}
+          </ol>
+        {% else %}
+          <div class="muted">No rapid escalations.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  const eventsByDay = {{ events_by_day|tojson }};
+  const actorsNew = {{ actors_new|tojson }};
+  const actorsRecurrent = {{ actors_recurrent|tojson }};
+  const stageProgress = {{ stage_progress|tojson }};
+
+  const byDay = (rows) => {
+    const map = {};
+    rows.forEach(r => { map[r.day] = (map[r.day] || 0) + r.cnt; });
+    return map;
+  };
+
+  const renderCharts = () => {
+    const eventsMap = byDay(eventsByDay);
+    const days = Object.keys(eventsMap).sort();
+    const events = days.map(d => eventsMap[d] || 0);
+
+    const newMap = byDay(actorsNew);
+    const recMap = byDay(actorsRecurrent);
+    const actorDays = Array.from(new Set([...Object.keys(newMap), ...Object.keys(recMap)])).sort();
+    const newVals = actorDays.map(d => newMap[d] || 0);
+    const recVals = actorDays.map(d => recMap[d] || 0);
+
+    const stageMap = {};
+    stageProgress.forEach(r => {
+      stageMap[r.day] = Math.max(stageMap[r.day] || 0, r.stage || 0);
+    });
+    const stageDays = Object.keys(stageMap).sort();
+    const stageVals = stageDays.map(d => stageMap[d] || 0);
+
+    const commonOptions = {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: {
+          display: true,
+          labels: { color: "#cfcfcf", boxWidth: 12, boxHeight: 12 }
+        },
+        tooltip: {
+          backgroundColor: "rgba(18,18,18,0.92)",
+          borderColor: "rgba(255,255,255,0.1)",
+          borderWidth: 1,
+          titleColor: "#fff",
+          bodyColor: "#e6e6e6",
+          displayColors: true,
+          padding: 10
+        }
+      },
+      scales: {
+        x: {
+          grid: { color: "rgba(255,255,255,0.06)" },
+          ticks: { color: "#9a9a9a", maxTicksLimit: 7 }
+        },
+        y: {
+          grid: { color: "rgba(255,255,255,0.08)" },
+          ticks: { color: "#9a9a9a" }
+        }
+      }
+    };
+
+    new Chart(document.getElementById("chart-events"), {
+      type: "line",
+      data: {
+        labels: days,
+        datasets: [{
+          label: "Events",
+          data: events,
+          borderColor: "#7dd3fc",
+          backgroundColor: "rgba(125,211,252,0.15)",
+          fill: true,
+          tension: 0.3,
+          pointRadius: 3,
+          pointHoverRadius: 5
+        }]
+      },
+      options: commonOptions
+    });
+
+    new Chart(document.getElementById("chart-actors"), {
+      type: "bar",
+      data: {
+        labels: actorDays,
+        datasets: [
+          {
+            label: "New",
+            data: newVals,
+            backgroundColor: "rgba(79,209,197,0.8)"
+          },
+          {
+            label: "Recurrent",
+            data: recVals,
+            backgroundColor: "rgba(102,126,234,0.8)"
+          }
+        ]
+      },
+      options: {
+        ...commonOptions,
+        scales: {
+          ...commonOptions.scales,
+          x: { ...commonOptions.scales.x, stacked: true },
+          y: { ...commonOptions.scales.y, stacked: true }
+        }
+      }
+    });
+
+    new Chart(document.getElementById("chart-stages"), {
+      type: "line",
+      data: {
+        labels: stageDays,
+        datasets: [{
+          label: "Max stage",
+          data: stageVals,
+          borderColor: "#fca5a5",
+          backgroundColor: "rgba(252,165,165,0.12)",
+          fill: true,
+          stepped: true,
+          pointRadius: 3,
+          pointHoverRadius: 5
+        }]
+      },
+      options: commonOptions
+    });
+  };
+
+  const relTime = (iso) => {
+    try{
+      const dt = new Date(iso.replace('Z',''));
+      const diff = (Date.now() - dt.getTime()) / 1000;
+      if(diff < 60) return `${Math.round(diff)}s ago`;
+      if(diff < 3600) return `${Math.round(diff/60)}m ago`;
+      if(diff < 86400) return `${Math.round(diff/3600)}h ago`;
+      return `${Math.round(diff/86400)}d ago`;
+    }catch(e){ return iso; }
+  };
+  document.querySelectorAll('[data-rel]').forEach(el => {
+    el.textContent = relTime(el.getAttribute('data-rel') || '');
+  });
+  renderCharts();
+</script>
+{% endblock %}
